@@ -4,15 +4,18 @@ import RightPanel from './RightPanel';
 import './MainContent.css';
 
 function MainContent() {
-  const [refreshCalendar, setRefreshCalendar] = useState(0);
+  const [refreshCalendar, setRefreshCalendar] = useState(false);
 
   const handleRefreshCalendar = useCallback(() => {
-    setRefreshCalendar((prev) => prev + 1);
+    setRefreshCalendar((prev) => !prev);
   }, []);
 
   return (
     <div className="main-content">
-      <LeftPanel onCallEnded={handleRefreshCalendar} />
+      <LeftPanel
+        onCallEnded={handleRefreshCalendar}
+        onRefreshCalendar={handleRefreshCalendar}
+      />
       <RightPanel refreshCalendar={refreshCalendar} />
     </div>
   );

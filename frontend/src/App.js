@@ -7,18 +7,12 @@ import './styles.css';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
-  };
+  const handleLogin = () => setIsAuthenticated(true);
 
   return (
     <div className="App">
       <TopBar />
-      {isAuthenticated ? (
-        <MainContent />
-      ) : (
-        <Login onLogin={handleLogin} />
-      )}
+      {isAuthenticated ? <MainContent /> : <Login onLogin={handleLogin} />}
     </div>
   );
 }

@@ -2,23 +2,37 @@ import React, { useState } from 'react';
 import './TopBar.css';
 import ariacall_logo from './ariacall_logo.png';
 
+function NavLinks({ navOpen }) {
+  return (
+    <div className={`nav-links ${navOpen ? 'open' : ''}`} id="navLinks">
+      <a href="https://ariacall.pl" target="_blank" rel="noopener noreferrer">
+        Strona projektu
+      </a>
+      <a
+        href="https://github.com/mwilkosz/AriaCall"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Github
+      </a>
+    </div>
+  );
+}
+
 function TopBar() {
   const [navOpen, setNavOpen] = useState(false);
 
-  const toggleNavLinks = () => {
-    setNavOpen(!navOpen);
-  };
+  const toggleNavLinks = () => setNavOpen((prev) => !prev);
 
   return (
     <div className="top-bar">
       <div className="logo">
-        <img src={ariacall_logo}alt="Logo" />
+        <img src={ariacall_logo} alt="Logo" />
       </div>
-      <div className={`nav-links ${navOpen ? 'open' : ''}`} id="navLinks">
-        <a href="https://ariacall.pl" target="_blank" rel="noopener noreferrer">Strona projektu</a>
-        <a href="https://github.com/mwilkosz/AriaCall" target="_blank" rel="noopener noreferrer">Github</a>
-      </div>
-      <a href="https://calendly.com/ariacall/30min" className="demo-button">Umów demo</a>
+      <NavLinks navOpen={navOpen} />
+      <a href="https://calendly.com/ariacall/30min" className="demo-button">
+        Umów demo
+      </a>
       <div className="hamburger-menu" onClick={toggleNavLinks}>
         <span></span>
         <span></span>

@@ -2,9 +2,20 @@ import React, { useState } from 'react';
 import './Login.css';
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [credentials, setCredentials] = useState({
+    username: '',
+    password: '',
+  });
   const [error, setError] = useState('');
+
+  const { username, password } = credentials;
+
+  const handleChange = (e) => {
+    setCredentials((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -27,8 +38,9 @@ function Login({ onLogin }) {
           <label>Nazwa użytkownika</label>
           <input
             type="text"
+            name="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={handleChange}
             required
           />
         </div>
@@ -36,8 +48,9 @@ function Login({ onLogin }) {
           <label>Hasło</label>
           <input
             type="password"
+            name="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={handleChange}
             required
           />
         </div>

@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import './LeftPanel.css';
+import { FaPhoneAlt, FaPhoneSlash } from 'react-icons/fa';
 
-function LeftPanel({ onCallEnded }) {
+function LeftPanel({ onCallEnded, onRefreshCalendar }) {
   const [conversationStarted, setConversationStarted] = useState(false);
   const [output, setOutput] = useState([]);
+
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
   const microphoneAudioContextRef = useRef(null);
@@ -18,19 +20,19 @@ function LeftPanel({ onCallEnded }) {
   const ballRef = useRef(null);
 
   const visualizeFrequency = useCallback(() => {
+    if (!analyserRef.current || !dataArrayRef.current) return;
+
     animationIdRef.current = requestAnimationFrame(visualizeFrequency);
 
     analyserRef.current.getByteFrequencyData(dataArrayRef.current);
 
-    let sum = 0;
-    for (let i = 0; i < dataArrayRef.current.length; i++) {
-      sum += dataArrayRef.current[i];
-    }
-    const avgFrequency = sum / dataArrayRef.current.length;
+    const avgFrequency =
+      dataArrayRef.current.reduce((sum, value) => sum + value, 0) /
+      dataArrayRef.current.length;
 
     const minScale = 1;
-    const maxScale = 4;
-    const scaleFactor = minScale + ((avgFrequency / 255) * (maxScale - minScale));
+    const maxScale = 1.5;
+    const scaleFactor = minScale + (avgFrequency / 255) * (maxScale - minScale);
 
     if (ballRef.current) {
       ballRef.current.style.transform = `scale(${scaleFactor})`;
@@ -47,7 +49,6 @@ function LeftPanel({ onCallEnded }) {
   const playNextAudio = useCallback(() => {
     if (audioQueueRef.current.length === 0) {
       isPlayingRef.current = false;
-      cancelAnimationFrame(animationIdRef.current);
       animateBall(false);
       return;
     }
@@ -66,8 +67,7 @@ function LeftPanel({ onCallEnded }) {
     if (!analyserRef.current) {
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
-      const bufferLength = analyserRef.current.frequencyBinCount;
-      dataArrayRef.current = new Uint8Array(bufferLength);
+      dataArrayRef.current = new Uint8Array(analyserRef.current.frequencyBinCount);
     }
 
     source.connect(analyserRef.current);
@@ -78,11 +78,15 @@ function LeftPanel({ onCallEnded }) {
       playNextAudio();
     };
 
-    audio.play().then(() => {
-      visualizeFrequency();
-    }).catch(() => {
-      playNextAudio();
-    });
+    audio
+      .play()
+      .then(() => {
+        visualizeFrequency();
+      })
+      .catch((error) => {
+        console.error('Error playing audio:', error);
+        playNextAudio();
+      });
   }, [animateBall, visualizeFrequency]);
 
   useEffect(() => {
@@ -105,8 +109,16 @@ function LeftPanel({ onCallEnded }) {
       }
 
       if (data.partialResponse) {
-        setOutput((prevOutput) => [...prevOutput, data.partialResponse]);
+        setOutput((prev) => [...prev, data.partialResponse]);
       }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
     };
 
     return () => {
@@ -115,7 +127,8 @@ function LeftPanel({ onCallEnded }) {
   }, [playNextAudio]);
 
   const startMicrophone = () => {
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
       .then((stream) => {
         microphoneAudioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
         microphoneStreamRef.current = microphoneAudioContextRef.current.createMediaStreamSource(stream);
@@ -131,10 +144,12 @@ function LeftPanel({ onCallEnded }) {
           const base64data = btoa(String.fromCharCode.apply(null, encodedData));
 
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              event: 'media',
-              media: { payload: base64data },
-            }));
+            wsRef.current.send(
+              JSON.stringify({
+                event: 'media',
+                media: { payload: base64data },
+              })
+            );
           }
         };
       })
@@ -147,16 +162,16 @@ function LeftPanel({ onCallEnded }) {
     if (microphoneProcessorRef.current) {
       microphoneProcessorRef.current.disconnect();
       microphoneProcessorRef.current.onaudioprocess = null;
-      microphoneProcessorRef.current = null;
     }
     if (microphoneStreamRef.current) {
       microphoneStreamRef.current.disconnect();
-      microphoneStreamRef.current = null;
     }
     if (microphoneAudioContextRef.current) {
       microphoneAudioContextRef.current.close();
-      microphoneAudioContextRef.current = null;
     }
+    microphoneProcessorRef.current = null;
+    microphoneStreamRef.current = null;
+    microphoneAudioContextRef.current = null;
   };
 
   const stopAudioPlayback = () => {
@@ -168,8 +183,6 @@ function LeftPanel({ onCallEnded }) {
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
-      analyserRef.current = null;
-      dataArrayRef.current = null;
     }
     isPlayingRef.current = false;
     audioQueueRef.current = [];
@@ -177,29 +190,18 @@ function LeftPanel({ onCallEnded }) {
   };
 
   const downsampleBuffer = (buffer, sampleRate, outSampleRate) => {
-    if (outSampleRate === sampleRate) {
-      return buffer;
-    }
-    if (outSampleRate > sampleRate) {
-      throw new Error('Downsampling rate should be lower than original sampling frequency');
+    if (outSampleRate >= sampleRate) {
+      throw new Error('Downsampling rate should be lower than original sample rate');
     }
     const sampleRateRatio = sampleRate / outSampleRate;
     const newLength = Math.round(buffer.length / sampleRateRatio);
     const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-      let accum = 0;
-      let count = 0;
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-        accum += buffer[i];
-        count++;
-      }
-      result[offsetResult] = accum / count;
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
+
+    for (let i = 0; i < newLength; i++) {
+      const offset = Math.round(i * sampleRateRatio);
+      result[i] = buffer[offset];
     }
+
     return result;
   };
 
@@ -207,21 +209,24 @@ function LeftPanel({ onCallEnded }) {
     const MULAW_MAX = 0x1FFF;
     const MULAW_BIAS = 33;
     const encoded = new Uint8Array(samples.length);
+
     for (let i = 0; i < samples.length; i++) {
       let sample = samples[i];
       sample = Math.max(-1, Math.min(1, sample));
       sample *= MULAW_MAX;
+
       const sign = sample < 0 ? 0x80 : 0;
       sample = Math.abs(sample);
       sample += MULAW_BIAS;
-      if (sample > MULAW_MAX) {
-        sample = MULAW_MAX;
-      }
+
+      if (sample > MULAW_MAX) sample = MULAW_MAX;
+
       const exponent = Math.floor(Math.log(sample) / Math.log(2));
       const mantissa = (sample >> (exponent - 3)) & 0x0F;
       const muLawByte = ~(sign | ((exponent - 5) << 4) | mantissa);
       encoded[i] = muLawByte;
     }
+
     return encoded;
   };
 
@@ -231,10 +236,12 @@ function LeftPanel({ onCallEnded }) {
     setConversationStarted(true);
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        event: 'start',
-        message: 'Starting conversation',
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          event: 'start',
+          message: 'Starting conversation',
+        })
+      );
     }
 
     startMicrophone();
@@ -245,23 +252,32 @@ function LeftPanel({ onCallEnded }) {
 
     stopMicrophone();
     stopAudioPlayback();
-
     setConversationStarted(false);
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        event: 'stop',
-        message: 'Ending conversation',
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          event: 'stop',
+          message: 'Ending conversation',
+        })
+      );
     }
 
-    if (onCallEnded) {
-      onCallEnded();
+    if (onCallEnded) onCallEnded();
+  };
+
+  const handleRefresh = () => {
+    if (onRefreshCalendar) {
+      onRefreshCalendar();
     }
   };
 
   return (
     <div className="left-panel">
+      <button className="refresh-button" onClick={handleRefresh}>
+        &#x21bb;
+      </button>
+
       <h1>Przetestuj AriaCall!</h1>
 
       <div id="visual">
@@ -269,11 +285,19 @@ function LeftPanel({ onCallEnded }) {
       </div>
 
       <div className="button-container">
-        <button onClick={handleStart} disabled={conversationStarted}>
-          Zadzwoń
+        <button
+          className="call-button"
+          onClick={handleStart}
+          disabled={conversationStarted}
+        >
+          <FaPhoneAlt className="icon" />
         </button>
-        <button onClick={handleStop} disabled={!conversationStarted}>
-          Zawieś
+        <button
+          className="hangup-button"
+          onClick={handleStop}
+          disabled={!conversationStarted}
+        >
+          <FaPhoneSlash className="icon" />
         </button>
       </div>
 
